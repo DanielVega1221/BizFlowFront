@@ -22,20 +22,47 @@ export const AuthProvider = ({ children }) => {
   useEffect(() => {
     const initAuth = async () => {
       const token = localStorage.getItem('bf_token');
+      const refreshToken = localStorage.getItem('bf_refresh_token');
       
       if (token) {
         try {
           // Set token in axios headers
           axiosInstance.defaults.headers.common['Authorization'] = `Bearer ${token}`;
           
-          // Fetch user data
+          // Fetch user data con reintentos automáticos incluidos en axios interceptor
           const response = await authAPI.getMe();
           setUser(response.data.user);
         } catch (error) {
           console.error('Error initializing auth:', error);
-          // Clear invalid token
-          localStorage.removeItem('bf_token');
-          delete axiosInstance.defaults.headers.common['Authorization'];
+          
+          // Si hay refresh token, intentar refrescar
+          if (refreshToken && error.response?.status === 401) {
+            try {
+              console.log('🔄 Intentando refrescar token...');
+              const refreshResponse = await authAPI.refreshToken(refreshToken);
+              const newAccessToken = refreshResponse.data.accessToken;
+              
+              localStorage.setItem('bf_token', newAccessToken);
+              axiosInstance.defaults.headers.common['Authorization'] = `Bearer ${newAccessToken}`;
+              
+              // Reintentar obtener usuario
+              const retryResponse = await authAPI.getMe();
+              setUser(retryResponse.data.user);
+              console.log('✅ Token refrescado exitosamente');
+            } catch (refreshError) {
+              console.error('Error refrescando token:', refreshError);
+              // Clear all tokens si el refresh falla
+              localStorage.removeItem('bf_token');
+              localStorage.removeItem('bf_refresh_token');
+              delete axiosInstance.defaults.headers.common['Authorization'];
+            }
+          } else if (error.response?.status === 401) {
+            // Token inválido sin refresh token disponible
+            localStorage.removeItem('bf_token');
+            localStorage.removeItem('bf_refresh_token');
+            delete axiosInstance.defaults.headers.common['Authorization'];
+          }
+          // Si es error de red (servidor dormido), los reintentos se manejan en axios interceptor
         }
       }
       
@@ -52,8 +79,20 @@ export const AuthProvider = ({ children }) => {
       setError('Sesión expirada');
     };
 
+    const handleServerWaking = (event) => {
+      // Mostrar notificación informativa al usuario
+      if (window.toast) {
+        window.toast.info(event.detail.message || 'El servidor está despertando...');
+      }
+    };
+
     window.addEventListener('auth:expired', handleAuthExpired);
-    return () => window.removeEventListener('auth:expired', handleAuthExpired);
+    window.addEventListener('server:waking', handleServerWaking);
+    
+    return () => {
+      window.removeEventListener('auth:expired', handleAuthExpired);
+      window.removeEventListener('server:waking', handleServerWaking);
+    };
   }, []);
 
   const login = async (email, password) => {

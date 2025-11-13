@@ -7,8 +7,10 @@ export const ProtectedRoute = ({ children }) => {
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
-        <Spinner size="lg" />
+      <div className="min-h-screen flex flex-col items-center justify-center bg-gradient-to-br from-primary-500 to-primary-700">
+        <Spinner size="lg" className="text-white" />
+        <p className="mt-4 text-white text-lg">Verificando autenticación...</p>
+        <p className="mt-2 text-white/80 text-sm">Si el servidor estaba dormido, esto puede tomar unos segundos</p>
       </div>
     );
   }

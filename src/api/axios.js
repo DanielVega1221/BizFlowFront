@@ -3,7 +3,7 @@ import axios from 'axios';
 // Create axios instance
 const axiosInstance = axios.create({
   baseURL: import.meta.env.VITE_API_URL || 'http://localhost:5000/api',
-  timeout: 10000,
+  timeout: 60000, // 60 segundos para dar tiempo a Render de despertar
   headers: {
     'Content-Type': 'application/json'
   }
@@ -44,6 +44,38 @@ axiosInstance.interceptors.response.use(
   },
   async (error) => {
     const originalRequest = error.config;
+
+    // Handle network errors, 404, 502, 503, timeout - Render cold start (servidor dormido)
+    const isServerError = error.code === 'ECONNABORTED' || 
+                         error.code === 'ERR_NETWORK' ||
+                         error.response?.status === 404 || 
+                         error.response?.status === 502 ||
+                         error.response?.status === 503 ||
+                         !error.response; // Sin respuesta = servidor caído o dormido
+
+    if (isServerError && !originalRequest._retryCount) {
+      originalRequest._retryCount = 0;
+    }
+
+    // Reintentar hasta 3 veces con delay creciente para cold starts
+    if (originalRequest._retryCount !== undefined && originalRequest._retryCount < 3) {
+      originalRequest._retryCount++;
+      const delay = originalRequest._retryCount * 8000; // 8s, 16s, 24s
+      
+      console.log(`⏳ [BizFlow] Servidor despertando... Reintento ${originalRequest._retryCount}/3 en ${delay/1000}s`);
+      console.log(`📡 [BizFlow] URL: ${originalRequest.url}`);
+      
+      // Emitir evento para mostrar notificación al usuario
+      if (originalRequest._retryCount === 1) {
+        const event = new CustomEvent('server:waking', {
+          detail: { message: '⏳ El servidor está despertando, esto puede tomar hasta 30 segundos...' }
+        });
+        window.dispatchEvent(event);
+      }
+
+      await new Promise(resolve => setTimeout(resolve, delay));
+      return axiosInstance(originalRequest);
+    }
 
     // Handle 401 Unauthorized - try to refresh token
     if (error.response?.status === 401 && !originalRequest._retry) {

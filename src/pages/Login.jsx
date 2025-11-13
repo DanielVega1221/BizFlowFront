@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useForm } from '../hooks/useForm';
@@ -15,6 +15,19 @@ export const Login = () => {
     password: ''
   });
   const [loading, setLoading] = useState(false);
+  const [serverWaking, setServerWaking] = useState(false);
+
+  // Escuchar evento de servidor despertando
+  useEffect(() => {
+    const handleServerWaking = () => {
+      setServerWaking(true);
+      // Resetear después de 35 segundos
+      setTimeout(() => setServerWaking(false), 35000);
+    };
+
+    window.addEventListener('server:waking', handleServerWaking);
+    return () => window.removeEventListener('server:waking', handleServerWaking);
+  }, []);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -43,6 +56,7 @@ export const Login = () => {
     setLoading(true);
     const result = await login(values.email, values.password);
     setLoading(false);
+    setServerWaking(false);
 
     if (result.success) {
       navigate('/dashboard');
@@ -91,13 +105,32 @@ export const Login = () => {
             </div>
           )}
 
+          {serverWaking && (
+            <div className="mb-4 p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
+              <p className="text-sm text-yellow-700">
+                ⏳ El servidor está despertando, por favor espera unos segundos...
+              </p>
+            </div>
+          )}
+
           <Button
             type="submit"
             variant="primary"
             className="w-full"
             disabled={loading}
           >
-            {loading ? <Spinner size="sm" className="mx-auto" /> : 'Iniciar Sesión'}
+            {loading ? (
+              serverWaking ? (
+                <span className="flex items-center justify-center gap-2">
+                  <Spinner size="sm" />
+                  <span>Despertando servidor...</span>
+                </span>
+              ) : (
+                <Spinner size="sm" className="mx-auto" />
+              )
+            ) : (
+              'Iniciar Sesión'
+            )}
           </Button>
         </form>
 
